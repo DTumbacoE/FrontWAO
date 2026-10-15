@@ -1,4 +1,4 @@
-name: wao_web
+name: wao
 description: "A new Flutter project."
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
@@ -30,19 +30,20 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  http: ^1.2.1
+  shared_preferences: ^2.2.2
+  image_picker: ^1.1.2  
+  dio: ^5.9.0
+
 
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
-  http: ^1.6.0
-  shared_preferences: ^2.5.5
-  google_maps_flutter: ^2.14.2
+  url_launcher: ^6.3.0
+  google_maps_flutter: ^2.12.3
+  geolocator: ^14.0.2
   file_picker: ^11.0.3
   http_parser: ^4.1.2
-  geolocator: ^14.0.2
-  image_picker: ^1.2.2
-  dio: ^5.11.1
-
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -53,6 +54,12 @@ dev_dependencies:
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
   flutter_lints: ^5.0.0
+  flutter_launcher_icons: ^0.14.4
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/icon/Logo.png"
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
@@ -64,6 +71,8 @@ flutter:
   # included with your application, so that you can use the icons in
   # the material Icons class.
   uses-material-design: true
+  assets:
+    - assets/icon/
 
   # To add assets to your application, add an assets section, like this:
   # assets:
