@@ -6,6 +6,17 @@ server {
     root /usr/share/nginx/html;
     index index.html;
 
+    # Recursos estáticos de Flutter
+    location /assets/ {
+        try_files $uri @flutter_assets;
+    }
+
+    # Compatibilidad con imágenes ubicadas en assets/
+    location @flutter_assets {
+        rewrite ^/assets/(.*)$ /assets/assets/$1 last;
+    }
+
+    # Aplicación Flutter Web
     location / {
         try_files $uri $uri/ /index.html;
     }
