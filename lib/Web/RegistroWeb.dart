@@ -307,7 +307,7 @@ class _RegistroWebState extends State<RegistroWeb> {
       ),
       decoration: const BoxDecoration(
         image: DecorationImage(
-          image: AssetImage('assets/Registrar.jpg'),
+          image: AssetImage('Registrar.jpg'),
           fit: BoxFit.cover,
           alignment: Alignment.center,
           colorFilter: ColorFilter.mode(Color(0x99102C54), BlendMode.darken),

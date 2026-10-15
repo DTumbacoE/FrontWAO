@@ -105,7 +105,7 @@ class _LoginWebState extends State<LoginWeb> {
       ),
       decoration: const BoxDecoration(
         image: DecorationImage(
-          image: AssetImage('assets/Login.jpg'),
+          image: AssetImage('Login.jpg'),
           fit: BoxFit.cover,
           alignment: Alignment.center,
           colorFilter: ColorFilter.mode(Color(0x99102C54), BlendMode.darken),
