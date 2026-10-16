@@ -9,12 +9,9 @@ class ApiNegocio {
     return prefs.getString('token');
   }
 
-  // ==========================
   // CREAR NEGOCIO
-  // ==========================
   Future<bool> crearNegocio({
     required int idTipoNegocio,
-    
     required int idPlan,
     required String nombre,
     String? descripcion,
@@ -50,67 +47,53 @@ class ApiNegocio {
         }),
       );
 
-      print(response.body);
-
       return response.statusCode == 201;
-    } catch (e) {
-      print(e);
+    } catch (_) {
       return false;
     }
   }
 
+  // OBTENER TODOS LOS NEGOCIOS
   Future<List<dynamic>> obtenerTodos() async {
     try {
       final token = await obtenerToken();
+
       final response = await http.get(
         Uri.parse('${ApiConfig.baseUrl}/api/negocios'),
         headers: {'Authorization': 'Bearer $token'},
       );
+
       if (response.statusCode == 200) {
         return jsonDecode(response.body);
       }
+
       return [];
-    } catch (e) {
-      print(e);
+    } catch (_) {
       return [];
     }
   }
 
-  // ==========================
   // MIS NEGOCIOS
-  // ==========================
   Future<List<dynamic>> misNegocios() async {
     try {
       final token = await obtenerToken();
-
-      print("TOKEN:");
-      print(token);
 
       final response = await http.get(
         Uri.parse('${ApiConfig.baseUrl}/api/negocios/mis-negocios'),
         headers: {'Authorization': 'Bearer $token'},
       );
 
-      print("STATUS:");
-      print(response.statusCode);
-
-      print("BODY:");
-      print(response.body);
-
       if (response.statusCode == 200) {
         return jsonDecode(response.body);
       }
 
       return [];
-    } catch (e) {
-      print(e);
+    } catch (_) {
       return [];
     }
   }
 
-  // ==========================
-  // NEGOCIO POR ID
-  // ==========================
+  // OBTENER NEGOCIO POR ID
   Future<Map<String, dynamic>?> obtenerNegocio(int idNegocio) async {
     try {
       final token = await obtenerToken();
@@ -125,15 +108,12 @@ class ApiNegocio {
       }
 
       return null;
-    } catch (e) {
-      print(e);
+    } catch (_) {
       return null;
     }
   }
 
-  // ==========================
-  // ACTUALIZAR
-  // ==========================
+  // ACTUALIZAR NEGOCIO
   Future<bool> actualizarNegocio({
     required int idNegocio,
     required int idTipoNegocio,
@@ -169,15 +149,12 @@ class ApiNegocio {
       );
 
       return response.statusCode == 200;
-    } catch (e) {
-      print(e);
+    } catch (_) {
       return false;
     }
   }
 
-  // ==========================
-  // ELIMINAR
-  // ==========================
+  // ELIMINAR NEGOCIO
   Future<bool> eliminarNegocio(int idNegocio) async {
     try {
       final token = await obtenerToken();
@@ -188,12 +165,12 @@ class ApiNegocio {
       );
 
       return response.statusCode == 200;
-    } catch (e) {
-      print(e);
+    } catch (_) {
       return false;
     }
   }
 
+  // OBTENER PLAN DEL NEGOCIO
   Future<Map<String, dynamic>?> obtenerPlan(int idNegocio) async {
     try {
       final token = await obtenerToken();
@@ -208,8 +185,7 @@ class ApiNegocio {
       }
 
       return null;
-    } catch (e) {
-      print(e);
+    } catch (_) {
       return null;
     }
   }
