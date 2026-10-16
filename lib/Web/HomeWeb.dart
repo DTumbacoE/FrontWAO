@@ -6,6 +6,7 @@ import 'package:geolocator/geolocator.dart';
 import '../Services/Negocio.dart';
 import 'NegocioWeb.dart';
 import 'ImagenesWeb.dart';
+import 'MiPlanWeb.dart';
 
 const _bg = Color(0xFFF5F8FC);
 const _side = Color(0xFF102C54);
@@ -329,7 +330,6 @@ class _HomeWebState extends State<HomeWeb> {
       ),
     );
   }
-  
 
   Widget _topBar(bool desktop) {
     return Container(
@@ -729,8 +729,8 @@ class _HomeWebState extends State<HomeWeb> {
         onActualizado: _actualizarUsuario,
       );
     }
-    if (_selected == 'Mi perfil') {
-      return _profilePage();
+    if (_role == 2 && _selected == 'Mis planes') {
+      return MiPlanWeb(embedded: true, onBack: () => _choose('Mi perfil'));
     }
     if (_selected != 'Inicio') {
       return _section(
@@ -1230,7 +1230,8 @@ class _HomeWebState extends State<HomeWeb> {
                   child:
                       (_role == 2 &&
                           (_selected == 'Mis Negocios' ||
-                              _selected == 'Galería'))
+                              _selected == 'Galería' ||
+                              _selected == 'Mis planes'))
                       ? _content()
                       : SingleChildScrollView(
                           padding: EdgeInsets.all(desktop ? 32 : 18),

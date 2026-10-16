@@ -1,24 +1,22 @@
 import 'package:flutter/material.dart';
 import '../Services/Negocio.dart';
 
-const Color _bg = Color(0xFFF5F8FC);
-const Color _white = Colors.white;
-const Color _navy = Color(0xFF102C54);
-const Color _muted = Color(0xFF64748B);
-const Color _border = Color(0xFFE0E8F2);
-const Color _orange = Color(0xFFF5A623);
-const Color _orangeLight = Color(0xFFFFF4E3);
-const Color _green = Color(0xFF16876D);
-const Color _red = Color(0xFFB42318);
+const _bg = Color(0xFFF5F8FC);
+const _navy = Color(0xFF102C54);
+const _muted = Color(0xFF64748B);
+const _border = Color(0xFFE0E8F2);
+const _orange = Color(0xFFF5A623);
+const _green = Color(0xFF16876D);
+const _red = Color(0xFFB42318);
 
 class MiPlanWeb extends StatefulWidget {
-  final int idNegocio;
+  final int? idNegocio;
   final bool embedded;
   final VoidCallback? onBack;
 
   const MiPlanWeb({
     super.key,
-    required this.idNegocio,
+    this.idNegocio,
     this.embedded = false,
     this.onBack,
   });
@@ -29,10 +27,11 @@ class MiPlanWeb extends StatefulWidget {
 
 class _MiPlanWebState extends State<MiPlanWeb> {
   final ApiNegocio _api = ApiNegocio();
-
-  Map<String, dynamic>? _plan;
+  List<Map<String, dynamic>> _items = [];
+  int? _seleccionado;
   bool _cargando = true;
   String? _error;
+  int _version = 0;
 
   @override
   void initState() {
@@ -43,626 +42,299 @@ class _MiPlanWebState extends State<MiPlanWeb> {
   @override
   void didUpdateWidget(covariant MiPlanWeb oldWidget) {
     super.didUpdateWidget(oldWidget);
-
-    if (oldWidget.idNegocio != widget.idNegocio) {
-      _cargar();
-    }
+    if (oldWidget.idNegocio != widget.idNegocio) _cargar();
   }
 
+  int? _id(dynamic value) => int.tryParse('${value ?? ''}');
+  String _texto(dynamic value, [String defecto = '—']) {
+    final s = '${value ?? ''}'.trim();
+    return s.isEmpty || s == 'null' ? defecto : s;
+  }
+
+  bool _activo(dynamic value) =>
+      value == true || value == 1 ||
+      '${value ?? ''}'.toLowerCase() == 'true' || '$value' == '1';
+
   Future<void> _cargar() async {
-    if (!mounted) return;
-
-    final idSolicitado = widget.idNegocio;
-
+    final version = ++_version;
     setState(() {
       _cargando = true;
       _error = null;
-      _plan = null;
     });
-
     try {
-      final data = await _api.obtenerPlan(idSolicitado);
+      // El servidor debe limitar esta lista al usuario autenticado.
+      final negocios = await _api.misNegocios();
+      final filtrados = negocios.where((n) {
+        final id = _id(n['id_negocio']);
+        return id != null &&
+            (widget.idNegocio == null || id == widget.idNegocio);
+      }).toList();
 
-      if (!mounted || widget.idNegocio != idSolicitado) {
-        return;
-      }
-
+      final resultados = await Future.wait(filtrados.map((negocio) async {
+        final id = _id(negocio['id_negocio'])!;
+        try {
+          final plan = await _api.obtenerPlan(id);
+          return <String, dynamic>{
+            'id': id,
+            'negocio': Map<String, dynamic>.from(negocio),
+            'plan': plan,
+            'error': false,
+          };
+        } catch (_) {
+          return <String, dynamic>{
+            'id': id,
+            'negocio': Map<String, dynamic>.from(negocio),
+            'plan': null,
+            'error': true,
+          };
+        }
+      }));
+      if (!mounted || version != _version) return;
       setState(() {
-        _plan = data;
+        _items = resultados;
+        if (!_items.any((e) => e['id'] == _seleccionado)) {
+          _seleccionado = _items.isEmpty ? null : _items.first['id'] as int;
+        }
         _cargando = false;
       });
-    } catch (e) {
-      if (!mounted || widget.idNegocio != idSolicitado) {
-        return;
-      }
-
+    } catch (_) {
+      if (!mounted || version != _version) return;
       setState(() {
-        _error = 'No fue posible consultar la información del plan.';
+        _error = 'No se pudieron obtener los negocios del propietario.';
         _cargando = false;
       });
     }
   }
 
-  String _valor(String campo, [String alternativa = '—']) {
-    final valor = _plan?[campo];
-
-    if (valor == null || '$valor'.trim().isEmpty) {
-      return alternativa;
+  Map<String, dynamic>? get _actual {
+    for (final item in _items) {
+      if (item['id'] == _seleccionado) return item;
     }
-
-    return '$valor';
+    return null;
   }
 
-  int _entero(String campo, [int alternativa = 0]) {
-    final valor = _plan?[campo];
+  BoxDecoration _decoracion() => BoxDecoration(
+    color: Colors.white,
+    borderRadius: BorderRadius.circular(18),
+    border: Border.all(color: _border),
+    boxShadow: const [
+      BoxShadow(color: Color(0x08102C54), blurRadius: 14, offset: Offset(0, 4)),
+    ],
+  );
 
-    if (valor is num) {
-      return valor.toInt();
-    }
+  Widget _etiqueta(String texto, Color color) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
+    decoration: BoxDecoration(
+      color: color.withValues(alpha: .10),
+      borderRadius: BorderRadius.circular(30),
+    ),
+    child: Text(texto, style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.w700)),
+  );
 
-    return int.tryParse('$valor') ?? alternativa;
+  Widget _tarjetaNegocio(Map<String, dynamic> item) {
+    final negocio = item['negocio'] as Map<String, dynamic>;
+    final plan = item['plan'] as Map<String, dynamic>?;
+    final seleccionado = item['id'] == _seleccionado;
+    final error = item['error'] == true;
+    final estado = error ? 'Error de consulta' : plan == null
+        ? 'Sin plan' : _activo(plan['activo']) ? 'Activo' : 'Inactivo';
+    final color = error ? _red : plan == null ? _muted :
+        _activo(plan['activo']) ? _green : _red;
+
+    return InkWell(
+      borderRadius: BorderRadius.circular(18),
+      onTap: () => setState(() => _seleccionado = item['id'] as int),
+      child: Container(
+        padding: const EdgeInsets.all(19),
+        decoration: _decoracion().copyWith(
+          border: Border.all(color: seleccionado ? _orange : _border, width: seleccionado ? 2 : 1),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(children: [
+              Container(
+                padding: const EdgeInsets.all(11),
+                decoration: BoxDecoration(color: const Color(0xFFFFF4E3), borderRadius: BorderRadius.circular(12)),
+                child: const Icon(Icons.storefront_outlined, color: _orange),
+              ),
+              const Spacer(),
+              if (seleccionado) const Icon(Icons.check_circle, color: _orange),
+            ]),
+            const SizedBox(height: 14),
+            Text(_texto(negocio['nombre'], 'Negocio sin nombre'),
+                maxLines: 2, overflow: TextOverflow.ellipsis,
+                style: const TextStyle(color: _navy, fontSize: 17, fontWeight: FontWeight.w800)),
+            const SizedBox(height: 7),
+            Text('Plan: ${_texto(plan?['nombre'], error ? 'No disponible' : 'Sin asignar')}',
+                style: const TextStyle(color: _muted)),
+            const SizedBox(height: 12),
+            _etiqueta(estado, color),
+            const SizedBox(height: 15),
+            const Row(children: [
+              Text('Ver detalles', style: TextStyle(color: _navy, fontWeight: FontWeight.w700)),
+              SizedBox(width: 5),
+              Icon(Icons.arrow_forward_rounded, color: _orange, size: 18),
+            ]),
+          ],
+        ),
+      ),
+    );
   }
 
-  bool _activo(dynamic valor) {
-    return valor == true ||
-        valor == 1 ||
-        '$valor'.toLowerCase() == 'true' ||
-        '$valor' == '1';
+  Widget _dato(IconData icono, String titulo, String valor) => Container(
+    padding: const EdgeInsets.all(16),
+    decoration: BoxDecoration(color: _bg, borderRadius: BorderRadius.circular(12), border: Border.all(color: _border)),
+    child: Row(children: [
+      Icon(icono, color: _orange, size: 21),
+      const SizedBox(width: 12),
+      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(titulo, style: const TextStyle(color: _muted, fontSize: 12)),
+        const SizedBox(height: 4),
+        Text(valor, style: const TextStyle(color: _navy, fontSize: 15, fontWeight: FontWeight.w800)),
+      ])),
+    ]),
+  );
+
+  Widget _detalle() {
+    final item = _actual;
+    if (item == null) return const SizedBox.shrink();
+    final negocio = item['negocio'] as Map<String, dynamic>;
+    final plan = item['plan'] as Map<String, dynamic>?;
+    final error = item['error'] == true;
+    final beneficios = plan?['beneficios'] is List
+        ? (plan!['beneficios'] as List).whereType<Map>().toList()
+        : <Map>[];
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(24),
+      decoration: _decoracion(),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Text('DETALLES DEL PLAN', style: TextStyle(color: _muted, fontWeight: FontWeight.w700, fontSize: 12)),
+        const SizedBox(height: 7),
+        Text(_texto(negocio['nombre']), style: const TextStyle(color: _navy, fontSize: 23, fontWeight: FontWeight.w800)),
+        const SizedBox(height: 15),
+        if (error)
+          const Text('No se pudo consultar el plan de este negocio. Pulsa Actualizar para reintentar.',
+              style: TextStyle(color: _red))
+        else if (plan == null)
+          const Text('Este negocio no tiene información de plan disponible.',
+              style: TextStyle(color: _muted))
+        else ...[
+          Row(children: [
+            Expanded(child: Text(_texto(plan['nombre'], 'Plan'),
+                style: const TextStyle(color: _navy, fontSize: 20, fontWeight: FontWeight.w800))),
+            _etiqueta(_activo(plan['activo']) ? 'Activo' : 'Inactivo',
+                _activo(plan['activo']) ? _green : _red),
+          ]),
+          const SizedBox(height: 18),
+          LayoutBuilder(builder: (context, c) {
+            final datos = [
+              _dato(Icons.event_outlined, 'Vencimiento', _texto(plan['fecha_vencimiento'])),
+              _dato(Icons.hourglass_bottom_outlined, 'Días restantes',
+                  plan['dias_restantes'] == null ? '—' : '${plan['dias_restantes']} días'),
+              _dato(Icons.payments_outlined, 'Precio',
+                  plan['precio'] == null ? '—' : '\$${plan['precio']}'),
+              _dato(Icons.storefront_outlined, 'Límite de negocios', _texto(plan['limite_negocios'])),
+            ];
+            final ancho = c.maxWidth;
+            return Wrap(spacing: 12, runSpacing: 12,
+              children: datos.map((dato) => SizedBox(
+                width: ancho >= 600 ? (ancho - 12) / 2 : ancho,
+                child: dato,
+              )).toList());
+          }),
+          const SizedBox(height: 22),
+          const Text('Beneficios incluidos', style: TextStyle(color: _navy, fontSize: 17, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 12),
+          if (beneficios.isEmpty)
+            const Text('El servicio no proporcionó beneficios para este plan.',
+                style: TextStyle(color: _muted))
+          else
+            ...beneficios.map((b) => Padding(
+              padding: const EdgeInsets.symmetric(vertical: 7),
+              child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Icon(_activo(b['activo']) ? Icons.check_circle_outline : Icons.lock_outline,
+                    color: _activo(b['activo']) ? _green : _muted, size: 21),
+                const SizedBox(width: 10),
+                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(_texto(b['nombre'], 'Beneficio'),
+                      style: const TextStyle(color: _navy, fontWeight: FontWeight.w700)),
+                  if (_texto(b['descripcion'], '').isNotEmpty)
+                    Text(_texto(b['descripcion']), style: const TextStyle(color: _muted, fontSize: 12)),
+                ])),
+              ]),
+            )),
+        ],
+      ]),
+    );
   }
 
-  void _volver() {
-    if (widget.onBack != null) {
-      widget.onBack!();
-    } else if (Navigator.of(context).canPop()) {
-      Navigator.of(context).pop();
-    }
-  }
+  Widget _contenido() => LayoutBuilder(builder: (context, constraints) {
+    final compacto = constraints.maxWidth < 680;
+    return SingleChildScrollView(
+      padding: EdgeInsets.all(compacto ? 16 : 28),
+      child: Center(child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 1150),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            IconButton(
+              tooltip: 'Volver',
+              onPressed: () {
+                if (widget.onBack != null) {
+                  widget.onBack!();
+                } else if (Navigator.of(context).canPop()) {
+                  Navigator.pop(context);
+                }
+              },
+              icon: const Icon(Icons.arrow_back_rounded, color: _navy),
+            ),
+            const SizedBox(width: 8),
+            const Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('Mis planes', style: TextStyle(color: _navy, fontSize: 27, fontWeight: FontWeight.w800)),
+              SizedBox(height: 5),
+              Text('Planes de todos tus negocios registrados', style: TextStyle(color: _muted)),
+            ])),
+            IconButton(tooltip: 'Actualizar', onPressed: _cargando ? null : _cargar,
+                icon: const Icon(Icons.refresh_rounded, color: _navy)),
+          ]),
+          const SizedBox(height: 23),
+          if (_cargando)
+            const Center(child: Padding(padding: EdgeInsets.all(60), child: CircularProgressIndicator(color: _orange)))
+          else if (_error != null)
+            Column(children: [
+              Text(_error!, style: const TextStyle(color: _red)),
+              const SizedBox(height: 12),
+              ElevatedButton(onPressed: _cargar, child: const Text('Reintentar')),
+            ])
+          else if (_items.isEmpty)
+            Container(width: double.infinity, padding: const EdgeInsets.all(30),
+              decoration: _decoracion(),
+              child: const Text('No se encontraron negocios asociados a tu cuenta.',
+                  style: TextStyle(color: _muted)))
+          else ...[
+            Text('${_items.length} negocio(s) registrado(s)',
+                style: const TextStyle(color: _navy, fontWeight: FontWeight.w700)),
+            const SizedBox(height: 15),
+            LayoutBuilder(builder: (context, c) {
+              final ancho = c.maxWidth;
+              final columnas = ancho >= 900 ? 3 : ancho >= 560 ? 2 : 1;
+              final anchoCard = (ancho - (columnas - 1) * 14) / columnas;
+              return Wrap(spacing: 14, runSpacing: 14,
+                children: _items.map((item) => SizedBox(width: anchoCard, child: _tarjetaNegocio(item))).toList());
+            }),
+            const SizedBox(height: 24),
+            _detalle(),
+          ],
+        ]),
+      )),
+    );
+  });
 
   @override
   Widget build(BuildContext context) {
-    final contenido = LayoutBuilder(
-      builder: (context, constraints) {
-        final compacto = constraints.maxWidth < 680;
-
-        return SingleChildScrollView(
-          padding: EdgeInsets.all(compacto ? 16 : 28),
-          child: Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 1150),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _encabezado(compacto),
-
-                  const SizedBox(height: 24),
-
-                  if (_cargando)
-                    const Padding(
-                      padding: EdgeInsets.only(top: 80),
-                      child: Center(
-                        child: CircularProgressIndicator(color: _orange),
-                      ),
-                    )
-                  else if (_error != null)
-                    _estado(
-                      Icons.wifi_off_rounded,
-                      'No se pudo cargar el plan',
-                      _error!,
-                      'Reintentar',
-                      _cargar,
-                    )
-                  else if (_plan == null)
-                    _estado(
-                      Icons.workspace_premium_outlined,
-                      'Sin plan asignado',
-                      'Este negocio todavía no tiene un plan disponible.',
-                      'Actualizar',
-                      _cargar,
-                    )
-                  else ...[
-                    _resumen(compacto),
-                    const SizedBox(height: 20),
-                    _progreso(),
-                    const SizedBox(height: 26),
-                    _beneficios(),
-                  ],
-                ],
-              ),
-            ),
-          ),
-        );
-      },
-    );
-
-    if (widget.embedded) {
-      return ColoredBox(color: _bg, child: contenido);
-    }
-
-    return Scaffold(
-      backgroundColor: _bg,
-      body: SafeArea(child: contenido),
-    );
-  }
-
-  Widget _encabezado(bool compacto) {
-    final titulo = Row(
-      children: [
-        IconButton(
-          tooltip: 'Volver a mis negocios',
-          onPressed: _volver,
-          icon: const Icon(Icons.arrow_back_rounded, color: _navy),
-        ),
-        const SizedBox(width: 8),
-        const Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Mi plan',
-                style: TextStyle(
-                  color: _navy,
-                  fontSize: 27,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-              SizedBox(height: 5),
-              Text(
-                'Información de la suscripción del negocio',
-                style: TextStyle(color: _muted, fontSize: 13),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-
-    final actualizar = OutlinedButton.icon(
-      onPressed: _cargando ? null : _cargar,
-      icon: const Icon(Icons.refresh_rounded),
-      label: const Text('Actualizar'),
-      style: OutlinedButton.styleFrom(
-        foregroundColor: _navy,
-        side: const BorderSide(color: _border),
-        backgroundColor: _white,
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 15),
-      ),
-    );
-
-    if (compacto) {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [titulo, const SizedBox(height: 14), actualizar],
-      );
-    }
-
-    return Row(
-      children: [
-        Expanded(child: titulo),
-        actualizar,
-      ],
-    );
-  }
-
-  Widget _resumen(bool compacto) {
-    final activo = _activo(_plan?['activo']);
-    final nombre = _valor('nombre', 'Plan');
-
-    final precio = _plan?['precio'] == null ? '—' : '\$${_plan!['precio']}/mes';
-
-    final totalNegocios = _entero('total_negocios');
-    final limite = _entero('limite_negocios');
-
-    final estadisticas = <Widget>[
-      _stat(Icons.event_rounded, 'Vencimiento', _valor('fecha_vencimiento')),
-      _stat(
-        Icons.hourglass_bottom_rounded,
-        'Días restantes',
-        '${_entero('dias_restantes')} días',
-      ),
-      _stat(Icons.payments_outlined, 'Costo del plan', precio),
-      _stat(
-        Icons.storefront_outlined,
-        'Negocios',
-        limite > 0 ? '$totalNegocios de $limite' : '$totalNegocios',
-      ),
-    ];
-
-    return Container(
-      width: double.infinity,
-      padding: EdgeInsets.all(compacto ? 18 : 26),
-      decoration: _decoracion(),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Wrap(
-            spacing: 14,
-            runSpacing: 14,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(15),
-                decoration: BoxDecoration(
-                  color: _orangeLight,
-                  borderRadius: BorderRadius.circular(15),
-                ),
-                child: const Icon(
-                  Icons.workspace_premium_rounded,
-                  color: _orange,
-                  size: 34,
-                ),
-              ),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'PLAN ACTUAL',
-                    style: TextStyle(
-                      color: _muted,
-                      fontWeight: FontWeight.w700,
-                      fontSize: 11,
-                      letterSpacing: 1,
-                    ),
-                  ),
-                  const SizedBox(height: 5),
-                  Text(
-                    nombre,
-                    style: const TextStyle(
-                      color: _navy,
-                      fontWeight: FontWeight.w800,
-                      fontSize: 27,
-                    ),
-                  ),
-                ],
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 13,
-                  vertical: 8,
-                ),
-                decoration: BoxDecoration(
-                  color: activo
-                      ? const Color(0xFFE7F6F1)
-                      : const Color(0xFFFDECEC),
-                  borderRadius: BorderRadius.circular(30),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      activo
-                          ? Icons.check_circle_rounded
-                          : Icons.cancel_outlined,
-                      size: 15,
-                      color: activo ? _green : _red,
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      activo ? 'ACTIVO' : 'INACTIVO',
-                      style: TextStyle(
-                        color: activo ? _green : _red,
-                        fontWeight: FontWeight.w800,
-                        fontSize: 11,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-
-          const SizedBox(height: 23),
-          const Divider(color: _border),
-          const SizedBox(height: 18),
-
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final columnas = constraints.maxWidth < 520 ? 1 : 2;
-
-              return GridView.builder(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-
-                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: columnas,
-                  crossAxisSpacing: 14,
-                  mainAxisSpacing: 14,
-                  mainAxisExtent: 94,
-                ),
-
-                itemCount: estadisticas.length,
-
-                itemBuilder: (context, index) {
-                  return estadisticas[index];
-                },
-              );
-            },
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _stat(IconData icono, String etiqueta, String valor) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 17, vertical: 13),
-      decoration: BoxDecoration(
-        color: _bg,
-        borderRadius: BorderRadius.circular(13),
-        border: Border.all(color: _border),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Row(
-            children: [
-              Icon(icono, color: _orange, size: 17),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  etiqueta,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(color: _muted, fontSize: 12),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Text(
-            valor,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              color: _navy,
-              fontSize: 17,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _progreso() {
-    final total = _entero('total_dias', 30);
-    final restantes = _entero('dias_restantes');
-
-    final progreso = total > 0
-        ? ((total - restantes) / total).clamp(0.0, 1.0).toDouble()
-        : 0.0;
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(23),
-      decoration: _decoracion(),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: _orangeLight,
-                  borderRadius: BorderRadius.circular(11),
-                ),
-                child: const Icon(
-                  Icons.calendar_month_outlined,
-                  color: _orange,
-                  size: 23,
-                ),
-              ),
-              const SizedBox(width: 12),
-              const Expanded(
-                child: Text(
-                  'Ciclo de facturación',
-                  style: TextStyle(
-                    color: _navy,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ),
-              Text(
-                '${(progreso * 100).round()}%',
-                style: const TextStyle(
-                  color: _orange,
-                  fontSize: 19,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 17),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(20),
-            child: LinearProgressIndicator(
-              value: progreso,
-              minHeight: 9,
-              color: _orange,
-              backgroundColor: _border,
-            ),
-          ),
-          const SizedBox(height: 10),
-          const Text(
-            'Progreso del período de suscripción',
-            style: TextStyle(color: _muted, fontSize: 12),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _beneficios() {
-    final raw = _plan?['beneficios'];
-
-    final beneficios = raw is List ? raw.whereType<Map>().toList() : <Map>[];
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          'BENEFICIOS DEL PLAN',
-          style: TextStyle(
-            color: _navy,
-            fontSize: 14,
-            fontWeight: FontWeight.w800,
-            letterSpacing: 0.5,
-          ),
-        ),
-        const SizedBox(height: 14),
-
-        if (beneficios.isEmpty)
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(24),
-            decoration: _decoracion(),
-            child: const Row(
-              children: [
-                Icon(Icons.info_outline_rounded, color: _orange),
-                SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    'El servicio no ha proporcionado un listado de beneficios para este plan.',
-                    style: TextStyle(color: _muted, fontSize: 13),
-                  ),
-                ),
-              ],
-            ),
-          )
-        else
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final ancho = constraints.maxWidth;
-
-              final anchoTarjeta = ancho >= 750 ? (ancho - 14) / 2 : ancho;
-
-              return Wrap(
-                spacing: 14,
-                runSpacing: 14,
-                children: beneficios.map((beneficio) {
-                  final activo = _activo(beneficio['activo']);
-
-                  return SizedBox(
-                    width: anchoTarjeta,
-                    child: Container(
-                      padding: const EdgeInsets.all(19),
-                      decoration: _decoracion(),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(10),
-                            decoration: BoxDecoration(
-                              color: activo ? const Color(0xFFE7F6F1) : _bg,
-                              borderRadius: BorderRadius.circular(11),
-                            ),
-                            child: Icon(
-                              activo
-                                  ? Icons.check_circle_rounded
-                                  : Icons.lock_outline_rounded,
-                              color: activo ? _green : _muted,
-                              size: 23,
-                            ),
-                          ),
-                          const SizedBox(width: 13),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  '${beneficio['nombre'] ?? 'Beneficio'}',
-                                  style: const TextStyle(
-                                    color: _navy,
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w800,
-                                  ),
-                                ),
-                                if ('${beneficio['descripcion'] ?? ''}'
-                                    .isNotEmpty) ...[
-                                  const SizedBox(height: 6),
-                                  Text(
-                                    '${beneficio['descripcion']}',
-                                    style: const TextStyle(
-                                      color: _muted,
-                                      fontSize: 12,
-                                    ),
-                                  ),
-                                ],
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  );
-                }).toList(),
-              );
-            },
-          ),
-      ],
-    );
-  }
-
-  Widget _estado(
-    IconData icono,
-    String titulo,
-    String mensaje,
-    String boton,
-    VoidCallback accion,
-  ) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(30),
-      decoration: _decoracion(),
-      child: Column(
-        children: [
-          Icon(icono, size: 47, color: _orange),
-          const SizedBox(height: 13),
-          Text(
-            titulo,
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-              color: _navy,
-              fontSize: 19,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-          const SizedBox(height: 9),
-          Text(
-            mensaje,
-            textAlign: TextAlign.center,
-            style: const TextStyle(color: _muted, fontSize: 13),
-          ),
-          const SizedBox(height: 20),
-          FilledButton.icon(
-            onPressed: accion,
-            icon: const Icon(Icons.refresh_rounded),
-            label: Text(boton),
-            style: FilledButton.styleFrom(
-              backgroundColor: _orange,
-              foregroundColor: _navy,
-              padding: const EdgeInsets.symmetric(horizontal: 23, vertical: 14),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  BoxDecoration _decoracion() {
-    return BoxDecoration(
-      color: _white,
-      borderRadius: BorderRadius.circular(17),
-      border: Border.all(color: _border),
-      boxShadow: const [
-        BoxShadow(
-          color: Color(0x07102C54),
-          blurRadius: 12,
-          offset: Offset(0, 4),
-        ),
-      ],
-    );
+    if (widget.embedded) return ColoredBox(color: _bg, child: _contenido());
+    return Scaffold(backgroundColor: _bg, body: SafeArea(child: _contenido()));
   }
 }
