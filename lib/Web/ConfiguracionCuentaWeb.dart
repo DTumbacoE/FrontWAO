@@ -25,6 +25,21 @@ class ConfiguracionCuentaWeb extends StatefulWidget {
 }
 
 class _ConfiguracionCuentaWebState extends State<ConfiguracionCuentaWeb> {
+  // Impide espacios al inicio y consecutivos sin impedir nombres compuestos.
+  static final TextInputFormatter _espaciosDeTexto =
+      TextInputFormatter.withFunction((anterior, nuevo) {
+    final texto = nuevo.text;
+    if (texto.startsWith(RegExp(r'\s')) ||
+        RegExp(r'\s{2,}').hasMatch(texto) ||
+        RegExp(r'[\t\n\r]').hasMatch(texto)) {
+      return anterior;
+    }
+    return nuevo;
+  });
+
+  static final TextInputFormatter _sinEspacios =
+      FilteringTextInputFormatter.deny(RegExp(r'\s'));
+
   final _api = ApiUsuario();
   final _datosKey = GlobalKey<FormState>();
   final _claveKey = GlobalKey<FormState>();
@@ -280,13 +295,24 @@ class _ConfiguracionCuentaWebState extends State<ConfiguracionCuentaWeb> {
     controller: controller,
     maxLength: max,
     keyboardType: teclado,
-    inputFormatters: filtros,
+    inputFormatters: [
+      if (controller == _telefono) _sinEspacios,
+      if (controller == _nombre || controller == _apellido || controller == _direccion)
+        _espaciosDeTexto,
+      ...?filtros,
+    ],
     autovalidateMode: AutovalidateMode.onUserInteraction,
     decoration: _decoracion(titulo, icono: icono).copyWith(counterText: ''),
-    validator: validar ??
-        (v) => requerido && (v == null || v.trim().isEmpty)
-            ? 'Este campo es obligatorio'
-            : null,
+    validator: (v) {
+      if ((controller == _nombre || controller == _apellido || controller == _direccion) &&
+          v != null && v.isNotEmpty && v != v.trim()) {
+        return 'No dejes espacios al principio ni al final';
+      }
+      return validar?.call(v) ??
+          (requerido && (v == null || v.trim().isEmpty)
+              ? 'Este campo es obligatorio'
+              : null);
+    },
   );
 
   Widget _campoClave(
@@ -297,6 +323,7 @@ class _ConfiguracionCuentaWebState extends State<ConfiguracionCuentaWeb> {
     String? Function(String?) validator,
   ) => TextFormField(
     controller: controller,
+    inputFormatters: [_sinEspacios],
     obscureText: ocultar,
     maxLength: 128,
     maxLengthEnforcement: MaxLengthEnforcement.enforced,

@@ -40,11 +40,13 @@ class ApiUsuario {
     } catch (_) {}
     return {
       ...data,
-      'success': response.statusCode >= 200 &&
+      'success':
+          response.statusCode >= 200 &&
           response.statusCode < 300 &&
           data['success'] != false,
       'statusCode': response.statusCode,
-      'message': data['message']?.toString() ??
+      'message':
+          data['message']?.toString() ??
           (response.statusCode >= 200 && response.statusCode < 300
               ? 'Operación realizada'
               : 'No se pudo completar la solicitud'),
@@ -52,12 +54,13 @@ class ApiUsuario {
   }
 
   Map<String, dynamic> _errorConexion() => {
-        'success': false,
-        'statusCode': 0,
-        'message': 'No se pudo conectar con el servidor',
-      };
+    'success': false,
+    'statusCode': 0,
+    'message': 'No se pudo conectar con el servidor',
+  };
 
   Future<void> _guardarUsuario(Map<String, dynamic> usuario) async {
+    if (kIsWeb) return;
     final prefs = await SharedPreferences.getInstance();
     final actualTexto = prefs.getString('usuario');
     Map<String, dynamic> actual = {};
@@ -96,7 +99,11 @@ class ApiUsuario {
       } else {
         await prefs.setString('token', data['token'] as String);
       }
-      await prefs.setString('usuario', jsonEncode(data['usuario']));
+      if (!kIsWeb) {
+        await prefs.setString('usuario', jsonEncode(data['usuario']));
+      } else {
+        await prefs.remove('usuario');
+      }
       return data;
     } catch (_) {
       return null;
@@ -296,10 +303,10 @@ class ApiUsuario {
   }
 
   Map<String, dynamic> _sinSesion() => {
-        'success': false,
-        'statusCode': 401,
-        'message': 'Debes iniciar sesión nuevamente',
-      };
+    'success': false,
+    'statusCode': 401,
+    'message': 'Debes iniciar sesión nuevamente',
+  };
 
   Future<void> logout() async {
     if (kIsWeb) {
@@ -308,7 +315,9 @@ class ApiUsuario {
       final response = await cliente.post(_url('/api/usuarios/logout-web'));
       if (!((response.statusCode >= 200 && response.statusCode < 300) ||
           response.statusCode == 401)) {
-        throw StateError('No se pudo revocar la sesión web (${response.statusCode})');
+        throw StateError(
+          'No se pudo revocar la sesión web (${response.statusCode})',
+        );
       }
     }
     final prefs = await SharedPreferences.getInstance();
