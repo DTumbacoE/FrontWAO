@@ -27,7 +27,7 @@ class ApiPlanes {
 
       return null;
     } catch (e) {
-      print('Error obtener plan del negocio: $e');
+      print('Error obtener2 plan del negocio: $e');
       return null;
     }
   }
