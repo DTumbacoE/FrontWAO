@@ -1,72 +1,118 @@
+
 import 'dart:convert';
+
+import 'package:flutter/foundation.dart'
+    show kIsWeb, debugPrint;
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+
 import '../config/api_config.dart';
+import 'cliente_http.dart';
 
 class ApiHorarios {
+  final http.Client cliente = crearClienteHttp();
 
+  Uri _url(String ruta) {
+    return Uri.parse('${ApiConfig.baseUrl}$ruta');
+  }
+
+  // JWT únicamente para Android/iOS
   Future<String?> _getToken() async {
+    if (kIsWeb) return null;
+
     final prefs = await SharedPreferences.getInstance();
     return prefs.getString('token');
   }
 
-  // Obtener horarios de un negocio
-  Future<List<dynamic>> obtenerPorNegocio(int idNegocio) async {
+  // Autenticación según la plataforma
+  Future<Map<String, String>?> _headers({
+    bool json = false,
+  }) async {
+    if (kIsWeb) {
+      // BrowserClient envía la cookie HttpOnly
+      // mediante withCredentials = true.
+      return {
+        if (json) 'Content-Type': 'application/json',
+      };
+    }
+
+    final token = await _getToken();
+
+    if (token == null || token.isEmpty) {
+      return null;
+    }
+
+    return {
+      'Authorization': 'Bearer $token',
+      if (json) 'Content-Type': 'application/json',
+    };
+  }
+
+  // OBTENER HORARIOS DE UN NEGOCIO
+  Future<List<dynamic>> obtenerPorNegocio(
+    int idNegocio,
+  ) async {
     try {
+      final headers = await _headers();
+      if (headers == null) return [];
 
-      final token = await _getToken();
-
-      final response = await http.get(
-        Uri.parse(
-          '${ApiConfig.baseUrl}/api/horarios/negocio/$idNegocio',
-        ),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+      final response = await cliente.get(
+        _url('/api/horarios/negocio/$idNegocio'),
+        headers: headers,
       );
 
       if (response.statusCode == 200) {
-        return jsonDecode(response.body);
+        final data = jsonDecode(response.body);
+
+        if (data is List) {
+          return data;
+        }
       }
 
-      return [];
+      debugPrint(
+        'Error obtener horarios: ${response.statusCode}',
+      );
 
+      return [];
     } catch (e) {
-      print('Error obtener horarios: $e');
+      debugPrint('Error obtener horarios: $e');
       return [];
     }
   }
 
-  // Obtener un horario específico
-  Future<Map<String, dynamic>?> obtenerHorario(int idHorario) async {
+  // OBTENER UN HORARIO ESPECÍFICO
+  Future<Map<String, dynamic>?> obtenerHorario(
+    int idHorario,
+  ) async {
     try {
+      final headers = await _headers();
+      if (headers == null) return null;
 
-      final token = await _getToken();
-
-      final response = await http.get(
-        Uri.parse(
-          '${ApiConfig.baseUrl}/api/horarios/$idHorario',
-        ),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+      final response = await cliente.get(
+        _url('/api/horarios/$idHorario'),
+        headers: headers,
       );
 
       if (response.statusCode == 200) {
-        return jsonDecode(response.body);
+        final data = jsonDecode(response.body);
+
+        if (data is Map) {
+          return Map<String, dynamic>.from(data);
+        }
       }
 
-      return null;
+      debugPrint(
+        'Error obtener horario: ${response.statusCode}',
+      );
 
+      return null;
     } catch (e) {
-      print('Error obtener horario: $e');
+      debugPrint('Error obtener horario: $e');
       return null;
     }
   }
 
-  // Crear horario
+  // CREAR HORARIO
   Future<Map<String, dynamic>?> crearHorario({
     required int idNegocio,
     required String diaSemana,
@@ -74,15 +120,12 @@ class ApiHorarios {
     required String horaCierre,
   }) async {
     try {
+      final headers = await _headers(json: true);
+      if (headers == null) return null;
 
-      final token = await _getToken();
-
-      final response = await http.post(
-        Uri.parse('${ApiConfig.baseUrl}/api/horarios'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+      final response = await cliente.post(
+        _url('/api/horarios'),
+        headers: headers,
         body: jsonEncode({
           'id_negocio': idNegocio,
           'dia_semana': diaSemana,
@@ -91,15 +134,20 @@ class ApiHorarios {
         }),
       );
 
-      return jsonDecode(response.body);
+      final data = jsonDecode(response.body);
 
+      if (data is Map) {
+        return Map<String, dynamic>.from(data);
+      }
+
+      return null;
     } catch (e) {
-      print('Error crear horario: $e');
+      debugPrint('Error crear horario: $e');
       return null;
     }
   }
 
-  // Actualizar horario
+  // ACTUALIZAR HORARIO
   Future<Map<String, dynamic>?> actualizarHorario({
     required int idHorario,
     required String diaSemana,
@@ -107,17 +155,12 @@ class ApiHorarios {
     required String horaCierre,
   }) async {
     try {
+      final headers = await _headers(json: true);
+      if (headers == null) return null;
 
-      final token = await _getToken();
-
-      final response = await http.put(
-        Uri.parse(
-          '${ApiConfig.baseUrl}/api/horarios/$idHorario',
-        ),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+      final response = await cliente.put(
+        _url('/api/horarios/$idHorario'),
+        headers: headers,
         body: jsonEncode({
           'dia_semana': diaSemana,
           'hora_apertura': horaApertura,
@@ -125,34 +168,35 @@ class ApiHorarios {
         }),
       );
 
-      return jsonDecode(response.body);
+      final data = jsonDecode(response.body);
 
+      if (data is Map) {
+        return Map<String, dynamic>.from(data);
+      }
+
+      return null;
     } catch (e) {
-      print('Error actualizar horario: $e');
+      debugPrint('Error actualizar horario: $e');
       return null;
     }
   }
 
-  // Eliminar horario
-  Future<bool> eliminarHorario(int idHorario) async {
+  // ELIMINAR HORARIO
+  Future<bool> eliminarHorario(
+    int idHorario,
+  ) async {
     try {
+      final headers = await _headers();
+      if (headers == null) return false;
 
-      final token = await _getToken();
-
-      final response = await http.delete(
-        Uri.parse(
-          '${ApiConfig.baseUrl}/api/horarios/$idHorario',
-        ),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+      final response = await cliente.delete(
+        _url('/api/horarios/$idHorario'),
+        headers: headers,
       );
 
       return response.statusCode == 200;
-
     } catch (e) {
-      print('Error eliminar horario: $e');
+      debugPrint('Error eliminar horario: $e');
       return false;
     }
   }

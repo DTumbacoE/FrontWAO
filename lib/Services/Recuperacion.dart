@@ -1,140 +1,132 @@
 
 import 'dart:convert';
+
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+
 import '../config/api_config.dart';
 
 class ApiRecuperacion {
+  Uri _url(String ruta) {
+    return Uri.parse('${ApiConfig.baseUrl}$ruta');
+  }
 
-  // Enviar código de recuperación al correo electrónico
-  Future<Map<String, dynamic>> solicitarCodigo(String correo) async {
+  Map<String, dynamic> _procesarRespuesta(
+    http.Response response, {
+    bool incluirResetToken = false,
+  }) {
+    Map<String, dynamic> data = {};
+
     try {
-      final url = Uri.parse(
-        '${ApiConfig.baseUrl}/api/recuperacion/recuperar-contrasena',
-      );
+      final decoded = jsonDecode(response.body);
 
+      if (decoded is Map) {
+        data = Map<String, dynamic>.from(decoded);
+      }
+    } catch (_) {
+      // Respuesta no JSON
+    }
+
+    final exitoso =
+        response.statusCode == 200 &&
+        data['success'] != false;
+
+    return {
+      'success': exitoso,
+      'statusCode': response.statusCode,
+      'message': data['message']?.toString() ??
+          (exitoso
+              ? 'Solicitud procesada'
+              : 'No se pudo completar la solicitud'),
+      if (incluirResetToken)
+        'resetToken': exitoso ? data['resetToken'] : null,
+    };
+  }
+
+  Map<String, dynamic> _errorConexion({
+    bool incluirResetToken = false,
+  }) {
+    return {
+      'success': false,
+      'statusCode': 0,
+      'message': 'No se pudo conectar con el servidor',
+      if (incluirResetToken) 'resetToken': null,
+    };
+  }
+
+  // SOLICITAR CÓDIGO DE RECUPERACIÓN
+  Future<Map<String, dynamic>> solicitarCodigo(
+    String correo,
+  ) async {
+    try {
       final response = await http.post(
-        url,
-        headers: {'Content-Type': 'application/json'},
+        _url('/api/recuperacion/recuperar-contrasena'),
+        headers: {
+          'Content-Type': 'application/json',
+        },
         body: jsonEncode({
           'correo': correo.trim().toLowerCase(),
         }),
       );
 
-      dynamic data;
-
-      try {
-        data = jsonDecode(response.body);
-      } catch (_) {
-        data = null;
-      }
-
-      return {
-        'success': response.statusCode == 200,
-        'statusCode': response.statusCode,
-        'message': data is Map
-            ? (data['message']?.toString() ?? 'Solicitud procesada')
-            : 'Solicitud procesada',
-      };
+      return _procesarRespuesta(response);
     } catch (e) {
-      print('Error al solicitar código: $e');
-
-      return {
-        'success': false,
-        'statusCode': 0,
-        'message': 'No se pudo conectar con el servidor',
-      };
+      debugPrint('Error al solicitar código: $e');
+      return _errorConexion();
     }
   }
 
-  // Verificar el código de 6 dígitos recibido por correo
+  // VERIFICAR CÓDIGO
   Future<Map<String, dynamic>> verificarCodigo(
     String correo,
     String codigo,
   ) async {
     try {
-      final url = Uri.parse(
-        '${ApiConfig.baseUrl}/api/recuperacion/verificar-codigo',
-      );
-
       final response = await http.post(
-        url,
-        headers: {'Content-Type': 'application/json'},
+        _url('/api/recuperacion/verificar-codigo'),
+        headers: {
+          'Content-Type': 'application/json',
+        },
         body: jsonEncode({
           'correo': correo.trim().toLowerCase(),
           'codigo': codigo.trim(),
         }),
       );
 
-      dynamic data;
-
-      try {
-        data = jsonDecode(response.body);
-      } catch (_) {
-        data = null;
-      }
-
-      return {
-        'success': response.statusCode == 200,
-        'statusCode': response.statusCode,
-        'message': data is Map
-            ? (data['message']?.toString() ?? 'Error al verificar código')
-            : 'Error al verificar código',
-        'resetToken': data is Map ? data['resetToken'] : null,
-      };
+      return _procesarRespuesta(
+        response,
+        incluirResetToken: true,
+      );
     } catch (e) {
-      print('Error al verificar código: $e');
+      debugPrint('Error al verificar código: $e');
 
-      return {
-        'success': false,
-        'statusCode': 0,
-        'message': 'No se pudo conectar con el servidor',
-        'resetToken': null,
-      };
+      return _errorConexion(
+        incluirResetToken: true,
+      );
     }
   }
 
-  // Restablecer contraseña después de verificar el código
+  // RESTABLECER CONTRASEÑA
   Future<Map<String, dynamic>> restablecerContrasena(
     String resetToken,
     String nuevaContrasena,
   ) async {
     try {
-      final url = Uri.parse(
-        '${ApiConfig.baseUrl}/api/recuperacion/restablecer-contrasena',
-      );
-
       final response = await http.post(
-        url,
-        headers: {'Content-Type': 'application/json'},
+        _url('/api/recuperacion/restablecer-contrasena'),
+        headers: {
+          'Content-Type': 'application/json',
+        },
         body: jsonEncode({
           'resetToken': resetToken,
           'nuevaContrasena': nuevaContrasena,
         }),
       );
 
-      dynamic data;
-
-      try {
-        data = jsonDecode(response.body);
-      } catch (_) {
-        data = null;
-      }
-
-      return {
-        'success': response.statusCode == 200,
-        'statusCode': response.statusCode,
-        'message': data is Map
-            ? (data['message']?.toString() ?? 'Error al cambiar contraseña')
-            : 'Error al cambiar contraseña',
-      };
+      return _procesarRespuesta(response);
     } catch (e) {
-      print('Error al restablecer contraseña: $e');
-
-      return {
-        'success': false,
-        'statusCode': 0,
-        'message': 'No se pudo conectar con el servidor',
-      };
+      debugPrint('Error al restablecer contraseña: $e');
+      return _errorConexion();
     }
   }
 }

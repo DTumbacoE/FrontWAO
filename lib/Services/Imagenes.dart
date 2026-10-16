@@ -1,184 +1,222 @@
+
 import 'dart:convert';
+
+import 'package:flutter/foundation.dart'
+    show kIsWeb, debugPrint;
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+
 import '../config/api_config.dart';
+import 'cliente_http.dart';
 
 class ApiImagenes {
+  final http.Client cliente = crearClienteHttp();
 
+  Uri _url(String ruta) {
+    return Uri.parse('${ApiConfig.baseUrl}$ruta');
+  }
+
+  // JWT solamente para Android/iOS
   Future<String?> _getToken() async {
+    if (kIsWeb) return null;
+
     final prefs = await SharedPreferences.getInstance();
     return prefs.getString('token');
   }
 
-  // Obtener todas las imágenes de un negocio
-  Future<List<dynamic>> obtenerPorNegocio(int idNegocio) async {
+  // Autenticación según la plataforma
+  Future<Map<String, String>?> _headers({
+    bool json = false,
+  }) async {
+    if (kIsWeb) {
+      // BrowserClient envía la cookie HttpOnly
+      // cuando withCredentials está activado.
+      return {
+        if (json) 'Content-Type': 'application/json',
+      };
+    }
+
+    final token = await _getToken();
+
+    if (token == null || token.isEmpty) {
+      return null;
+    }
+
+    return {
+      'Authorization': 'Bearer $token',
+      if (json) 'Content-Type': 'application/json',
+    };
+  }
+
+  // OBTENER TODAS LAS IMÁGENES DE UN NEGOCIO
+  Future<List<dynamic>> obtenerPorNegocio(
+    int idNegocio,
+  ) async {
     try {
+      final headers = await _headers();
+      if (headers == null) return [];
 
-      final token = await _getToken();
-
-      final response = await http.get(
-        Uri.parse(
-          '${ApiConfig.baseUrl}/api/imagenes/negocio/$idNegocio',
-        ),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+      final response = await cliente.get(
+        _url('/api/imagenes/negocio/$idNegocio'),
+        headers: headers,
       );
 
       if (response.statusCode == 200) {
-        return jsonDecode(response.body);
+        final data = jsonDecode(response.body);
+
+        if (data is List) {
+          return data;
+        }
       }
 
+      debugPrint(
+        'Error obtener imágenes: ${response.statusCode}',
+      );
       return [];
-
     } catch (e) {
-      print('Error obtener imágenes: $e');
+      debugPrint('Error obtener imágenes: $e');
       return [];
     }
   }
 
-  // Obtener una imagen específica
-  Future<Map<String, dynamic>?> obtenerImagen(int idImagen) async {
+  // OBTENER UNA IMAGEN ESPECÍFICA
+  Future<Map<String, dynamic>?> obtenerImagen(
+    int idImagen,
+  ) async {
     try {
+      final headers = await _headers();
+      if (headers == null) return null;
 
-      final token = await _getToken();
-
-      final response = await http.get(
-        Uri.parse(
-          '${ApiConfig.baseUrl}/api/imagenes/$idImagen',
-        ),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+      final response = await cliente.get(
+        _url('/api/imagenes/$idImagen'),
+        headers: headers,
       );
 
       if (response.statusCode == 200) {
-        return jsonDecode(response.body);
+        final data = jsonDecode(response.body);
+
+        if (data is Map) {
+          return Map<String, dynamic>.from(data);
+        }
       }
 
+      debugPrint(
+        'Error obtener imagen: ${response.statusCode}',
+      );
       return null;
-
     } catch (e) {
-      print('Error obtener imagen: $e');
+      debugPrint('Error obtener imagen: $e');
       return null;
     }
   }
 
-  // Obtener todas las imágenes
+  // OBTENER TODAS LAS IMÁGENES
   Future<List<dynamic>> obtenerImagenes() async {
     try {
+      final headers = await _headers();
+      if (headers == null) return [];
 
-      final token = await _getToken();
-
-      final response = await http.get(
-        Uri.parse(
-          '${ApiConfig.baseUrl}/api/imagenes',
-        ),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+      final response = await cliente.get(
+        _url('/api/imagenes'),
+        headers: headers,
       );
 
       if (response.statusCode == 200) {
-        return jsonDecode(response.body);
+        final data = jsonDecode(response.body);
+
+        if (data is List) {
+          return data;
+        }
       }
 
+      debugPrint(
+        'Error obtener imágenes: ${response.statusCode}',
+      );
       return [];
-
     } catch (e) {
-      print('Error obtener imágenes: $e');
+      debugPrint('Error obtener imágenes: $e');
       return [];
     }
   }
 
-  // Crear imagen
+  // CREAR IMAGEN
   Future<Map<String, dynamic>?> crearImagen({
     required int idNegocio,
     required String url,
   }) async {
     try {
+      final headers = await _headers(json: true);
+      if (headers == null) return null;
 
-      final token = await _getToken();
-
-      final response = await http.post(
-        Uri.parse(
-          '${ApiConfig.baseUrl}/api/imagenes',
-        ),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+      final response = await cliente.post(
+        _url('/api/imagenes'),
+        headers: headers,
         body: jsonEncode({
           'id_negocio': idNegocio,
           'url': url,
         }),
       );
 
-      return jsonDecode(response.body);
+      final data = jsonDecode(response.body);
 
+      if (data is Map) {
+        return Map<String, dynamic>.from(data);
+      }
+
+      return null;
     } catch (e) {
-      print('Error crear imagen: $e');
+      debugPrint('Error crear imagen: $e');
       return null;
     }
   }
 
-  // Actualizar imagen
+  // ACTUALIZAR IMAGEN
   Future<Map<String, dynamic>?> actualizarImagen({
     required int idImagen,
     required int idNegocio,
     required String url,
   }) async {
     try {
+      final headers = await _headers(json: true);
+      if (headers == null) return null;
 
-      final token = await _getToken();
-
-      final response = await http.put(
-        Uri.parse(
-          '${ApiConfig.baseUrl}/api/imagenes/$idImagen',
-        ),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+      final response = await cliente.put(
+        _url('/api/imagenes/$idImagen'),
+        headers: headers,
         body: jsonEncode({
           'id_negocio': idNegocio,
           'url': url,
         }),
       );
 
-      return jsonDecode(response.body);
+      final data = jsonDecode(response.body);
 
+      if (data is Map) {
+        return Map<String, dynamic>.from(data);
+      }
+
+      return null;
     } catch (e) {
-      print('Error actualizar imagen: $e');
+      debugPrint('Error actualizar imagen: $e');
       return null;
     }
   }
 
-  // Eliminar imagen
+  // ELIMINAR IMAGEN
   Future<bool> eliminarImagen(int idImagen) async {
     try {
+      final headers = await _headers();
+      if (headers == null) return false;
 
-      final token = await _getToken();
-
-      final response = await http.delete(
-        Uri.parse(
-          '${ApiConfig.baseUrl}/api/imagenes/$idImagen',
-        ),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+      final response = await cliente.delete(
+        _url('/api/imagenes/$idImagen'),
+        headers: headers,
       );
 
       return response.statusCode == 200;
-
     } catch (e) {
-      print('Error eliminar imagen: $e');
+      debugPrint('Error eliminar imagen: $e');
       return false;
     }
   }
-
 }
