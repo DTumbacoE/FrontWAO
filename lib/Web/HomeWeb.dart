@@ -245,7 +245,24 @@ class _HomeWebState extends State<HomeWeb> {
         ],
       ),
     );
-    if (confirmed == true && mounted) widget.onLogout();
+
+    if (confirmed != true || !mounted) return;
+
+    try {
+      await _apiUsuario.logout();
+
+      if (!mounted) return;
+
+      widget.onLogout();
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No se pudo cerrar la sesión. Inténtalo nuevamente.'),
+        ),
+      );
+    }
   }
 
   Widget _navButton(_NavEntry item) {
@@ -327,7 +344,7 @@ class _HomeWebState extends State<HomeWeb> {
           ),
         ],
       ),
-      
+
       child: Row(
         children: [
           InkWell(

@@ -1,6 +1,8 @@
 import 'dart:typed_data';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import '../validaciones/validaciones_wao.dart';
 import '../Services/Usuarios.dart';
 
 const _navy = Color(0xFF102C54);
@@ -96,10 +98,10 @@ class _ConfiguracionCuentaWebState extends State<ConfiguracionCuentaWeb> {
     if (_guardando || !_datosKey.currentState!.validate()) return;
     setState(() => _guardando = true);
     final respuesta = await _api.editarPerfil(
-      nombre: _nombre.text,
-      apellido: _apellido.text,
-      telefono: _telefono.text,
-      direccion: _direccion.text,
+      nombre: _nombre.text.trim(),
+      apellido: _apellido.text.trim(),
+      telefono: _telefono.text.trim(),
+      direccion: _direccion.text.trim(),
     );
     if (!mounted) return;
     setState(() => _guardando = false);
@@ -271,13 +273,20 @@ class _ConfiguracionCuentaWebState extends State<ConfiguracionCuentaWeb> {
     IconData icono, {
     int max = 100,
     bool requerido = false,
+    String? Function(String?)? validar,
+    TextInputType? teclado,
+    List<TextInputFormatter>? filtros,
   }) => TextFormField(
     controller: controller,
     maxLength: max,
+    keyboardType: teclado,
+    inputFormatters: filtros,
+    autovalidateMode: AutovalidateMode.onUserInteraction,
     decoration: _decoracion(titulo, icono: icono).copyWith(counterText: ''),
-    validator: (v) => requerido && (v == null || v.trim().isEmpty)
-        ? 'Este campo es obligatorio'
-        : null,
+    validator: validar ??
+        (v) => requerido && (v == null || v.trim().isEmpty)
+            ? 'Este campo es obligatorio'
+            : null,
   );
 
   Widget _campoClave(
@@ -289,7 +298,11 @@ class _ConfiguracionCuentaWebState extends State<ConfiguracionCuentaWeb> {
   ) => TextFormField(
     controller: controller,
     obscureText: ocultar,
+    maxLength: 128,
+    maxLengthEnforcement: MaxLengthEnforcement.enforced,
+    autovalidateMode: AutovalidateMode.onUserInteraction,
     autocorrect: false,
+    keyboardType: TextInputType.visiblePassword,
     enableSuggestions: false,
     decoration: _decoracion(
       titulo,
@@ -380,6 +393,8 @@ class _ConfiguracionCuentaWebState extends State<ConfiguracionCuentaWeb> {
                                 'Nombre',
                                 Icons.person_outline,
                                 requerido: true,
+                                 max: 60,
+                                 validar: (v) => ValidacionesWao.nombre(v),
                               ),
                             ),
                             const SizedBox(width: 14),
@@ -389,6 +404,8 @@ class _ConfiguracionCuentaWebState extends State<ConfiguracionCuentaWeb> {
                                 'Apellido',
                                 Icons.person_outline,
                                 requerido: true,
+                                 max: 60,
+                                 validar: (v) => ValidacionesWao.nombre(v, campo: 'Apellido'),
                               ),
                             ),
                           ],
@@ -400,6 +417,8 @@ class _ConfiguracionCuentaWebState extends State<ConfiguracionCuentaWeb> {
                               'Nombre',
                               Icons.person_outline,
                               requerido: true,
+                                 max: 60,
+                                 validar: (v) => ValidacionesWao.nombre(v),
                             ),
                             const SizedBox(height: 14),
                             _campo(
@@ -407,6 +426,8 @@ class _ConfiguracionCuentaWebState extends State<ConfiguracionCuentaWeb> {
                               'Apellido',
                               Icons.person_outline,
                               requerido: true,
+                                 max: 60,
+                                 validar: (v) => ValidacionesWao.nombre(v, campo: 'Apellido'),
                             ),
                           ],
                         ),
@@ -421,7 +442,15 @@ class _ConfiguracionCuentaWebState extends State<ConfiguracionCuentaWeb> {
                   ),
                 ),
                 const SizedBox(height: 14),
-                _campo(_telefono, 'Teléfono', Icons.phone_outlined, max: 20),
+                _campo(
+                  _telefono,
+                  'Teléfono',
+                  Icons.phone_outlined,
+                  max: 10,
+                  teclado: TextInputType.phone,
+                  filtros: [FilteringTextInputFormatter.digitsOnly],
+                  validar: ValidacionesWao.telefono,
+                ),
                 const SizedBox(height: 14),
                 _campo(_direccion, 'Dirección', Icons.place_outlined, max: 255),
                 const SizedBox(height: 18),
@@ -464,11 +493,7 @@ class _ConfiguracionCuentaWebState extends State<ConfiguracionCuentaWeb> {
                   'Nueva contraseña',
                   _ocultarNueva,
                   () => setState(() => _ocultarNueva = !_ocultarNueva),
-                  (v) => v == null || v.length < 12 || v.length > 128
-                      ? 'Debe tener entre 12 y 128 caracteres'
-                      : v == _actual.text
-                      ? 'Debe ser diferente de la actual'
-                      : null,
+                  (v) => ValidacionesWao.contrasenaNueva(v, _actual.text),
                 ),
                 const SizedBox(height: 14),
                 _campoClave(

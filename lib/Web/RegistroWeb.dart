@@ -7,6 +7,7 @@ const Color waoOrange = Color(0xFFF5A623);
 const Color waoNavy = Color(0xFF102C54);
 const Color waoBlue = Color(0xFF2463A5);
 const Color waoBackground = Color(0xFFF5F8FC);
+const _orange = Color(0xFFF5A623);
 
 class RegistroWeb extends StatefulWidget {
   const RegistroWeb({super.key});
@@ -89,9 +90,8 @@ class _RegistroWebState extends State<RegistroWeb> {
       if (resultado['success'] == true) {
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(
-            builder: (_) => VerificarCorreoWeb(
-              correo: _correo.text.trim().toLowerCase(),
-            ),
+            builder: (_) =>
+                VerificarCorreoWeb(correo: _correo.text.trim().toLowerCase()),
           ),
         );
       } else if (resultado['statusCode'] == 409) {
@@ -101,8 +101,10 @@ class _RegistroWebState extends State<RegistroWeb> {
         _formKey.currentState?.validate();
         _mensaje('Ya existe una cuenta con ese correo electrónico');
       } else {
-        _mensaje(resultado['message']?.toString() ??
-            'No se pudo completar el registro');
+        _mensaje(
+          resultado['message']?.toString() ??
+              'No se pudo completar el registro',
+        );
       }
     } catch (e) {
       if (mounted) {
@@ -117,12 +119,23 @@ class _RegistroWebState extends State<RegistroWeb> {
       value == null || value.trim().isEmpty ? 'Campo requerido' : null;
 
   String? _validarCorreo(String? value) {
-    final correo = value?.trim() ?? '';
-    if (correo.isEmpty) return 'Ingresa tu correo';
-    if (!RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(correo)) {
-      return 'Ingresa un correo válido (ejemplo@dominio.com)';
+    final correo = (value ?? '').trim().toLowerCase();
+
+    if (correo.isEmpty) {
+      return 'Ingresa tu correo electrónico';
     }
-    return _errorCorreoServidor;
+
+    if (correo.length > 150) {
+      return 'El correo no puede superar los 150 caracteres';
+    }
+
+    final regex = RegExp(r'^[a-zA-Z0-9._%+-]+@(gmail\.com|hotmail\.com)$');
+
+    if (!regex.hasMatch(correo)) {
+      return 'Solo se permiten correos Gmail o Hotmail';
+    }
+
+    return null;
   }
 
   String? _validarTelefono(String? value) {
@@ -319,20 +332,24 @@ class _RegistroWebState extends State<RegistroWeb> {
         children: [
           Row(
             children: [
-              const Icon(Icons.landscape_rounded, color: waoOrange, size: 44),
-              const SizedBox(width: 12),
-              Text(
-                'WAO',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: compact ? 34 : 48,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: -1.5,
+              Image.asset(
+                'assets/icon/Logo2.png',
+                width: compact ? 190 : 260,
+                height: compact ? 70 : 92,
+                fit: BoxFit.contain,
+                alignment: Alignment.centerLeft,
+                errorBuilder: (context, error, stackTrace) => Text(
+                  'WAO',
+                  style: TextStyle(
+                    color: _orange,
+                    fontSize: compact ? 34 : 48,
+                    fontWeight: FontWeight.w900,
+                  ),
                 ),
               ),
             ],
           ),
-          SizedBox(height: compact ? 14 : 42),
+          SizedBox(height: compact ? 4 : 8),
           Text(
             'Tu próxima aventura comienza aquí.',
             style: TextStyle(

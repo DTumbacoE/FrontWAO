@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../validaciones/validaciones_wao.dart';
 import '../Services/Usuarios.dart';
 import 'HomeWeb.dart';
 import 'RegistroWeb.dart';
@@ -105,7 +106,7 @@ class _LoginWebState extends State<LoginWeb> {
       ),
       decoration: const BoxDecoration(
         image: DecorationImage(
-          image: AssetImage('Login.jpg'),
+          image: AssetImage('assets/Login.jpg'),
           fit: BoxFit.cover,
           alignment: Alignment.center,
           colorFilter: ColorFilter.mode(Color(0x99102C54), BlendMode.darken),
@@ -208,26 +209,22 @@ class _LoginWebState extends State<LoginWeb> {
                     const SizedBox(height: 34),
                     TextFormField(
                       controller: _email,
+                      maxLength: 254,
+                      autovalidateMode: AutovalidateMode.onUserInteraction,
                       keyboardType: TextInputType.emailAddress,
                       autofillHints: const [AutofillHints.email],
                       decoration: _decoration(
                         'Correo electrónico',
                         Icons.mail_outline_rounded,
                       ),
-                      validator: (value) {
-                        final email = value?.trim() ?? '';
-                        if (email.isEmpty) return 'Ingresa tu correo';
-                        if (!RegExp(
-                          r'^[^@\s]+@[^@\s]+\.[^@\s]+$',
-                        ).hasMatch(email)) {
-                          return 'Correo electrónico inválido';
-                        }
-                        return null;
-                      },
+                      validator: ValidacionesWao.correo,
                     ),
                     const SizedBox(height: 18),
                     TextFormField(
                       controller: _password,
+                      maxLength: 128,
+                      autocorrect: false,
+                      enableSuggestions: false,
                       obscureText: _hidePassword,
                       autofillHints: const [AutofillHints.password],
                       onFieldSubmitted: (_) => _login(),

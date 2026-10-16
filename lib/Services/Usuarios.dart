@@ -1,18 +1,29 @@
 import 'dart:convert';
 import 'dart:typed_data';
+
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
-import '../config/api_config.dart';
 import 'package:http_parser/http_parser.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import '../config/api_config.dart';
+import 'cliente_http.dart';
+
 class ApiUsuario {
+  final http.Client cliente = crearClienteHttp();
+
   Uri _url(String ruta) => Uri.parse('${ApiConfig.baseUrl}$ruta');
 
   Future<String?> obtenerToken() async {
+    if (kIsWeb) return null;
     final prefs = await SharedPreferences.getInstance();
     return prefs.getString('token');
   }
 
   Future<Map<String, String>?> _headers({bool json = false}) async {
+    if (kIsWeb) {
+      return {if (json) 'Content-Type': 'application/json'};
+    }
     final token = await obtenerToken();
     if (token == null || token.isEmpty) return null;
     return {
@@ -29,13 +40,11 @@ class ApiUsuario {
     } catch (_) {}
     return {
       ...data,
-      'success':
-          response.statusCode >= 200 &&
+      'success': response.statusCode >= 200 &&
           response.statusCode < 300 &&
           data['success'] != false,
       'statusCode': response.statusCode,
-      'message':
-          data['message']?.toString() ??
+      'message': data['message']?.toString() ??
           (response.statusCode >= 200 && response.statusCode < 300
               ? 'Operación realizada'
               : 'No se pudo completar la solicitud'),
@@ -43,10 +52,10 @@ class ApiUsuario {
   }
 
   Map<String, dynamic> _errorConexion() => {
-    'success': false,
-    'statusCode': 0,
-    'message': 'No se pudo conectar con el servidor',
-  };
+        'success': false,
+        'statusCode': 0,
+        'message': 'No se pudo conectar con el servidor',
+      };
 
   Future<void> _guardarUsuario(Map<String, dynamic> usuario) async {
     final prefs = await SharedPreferences.getInstance();
@@ -55,8 +64,9 @@ class ApiUsuario {
     if (actualTexto != null) {
       try {
         final decodificado = jsonDecode(actualTexto);
-        if (decodificado is Map)
+        if (decodificado is Map) {
           actual = Map<String, dynamic>.from(decodificado);
+        }
       } catch (_) {}
     }
     await prefs.setString('usuario', jsonEncode({...actual, ...usuario}));
@@ -64,8 +74,8 @@ class ApiUsuario {
 
   Future<Map<String, dynamic>?> login(String correo, String password) async {
     try {
-      final response = await http.post(
-        _url('/api/usuarios/login'),
+      final response = await cliente.post(
+        _url(kIsWeb ? '/api/usuarios/login-web' : '/api/usuarios/login'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
           'correo': correo.trim().toLowerCase(),
@@ -73,10 +83,19 @@ class ApiUsuario {
         }),
       );
       if (response.statusCode != 200) return null;
-      final data = Map<String, dynamic>.from(jsonDecode(response.body));
-      if (data['token'] is! String || data['usuario'] is! Map) return null;
+      final decoded = jsonDecode(response.body);
+      if (decoded is! Map) return null;
+      final data = Map<String, dynamic>.from(decoded);
+      if (data['success'] == false || data['usuario'] is! Map) return null;
+      if (!kIsWeb && data['token'] is! String) return null;
+
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('token', data['token'] as String);
+      if (kIsWeb) {
+        // El JWT web queda exclusivamente en la cookie HttpOnly del navegador.
+        await prefs.remove('token');
+      } else {
+        await prefs.setString('token', data['token'] as String);
+      }
       await prefs.setString('usuario', jsonEncode(data['usuario']));
       return data;
     } catch (_) {
@@ -115,7 +134,7 @@ class ApiUsuario {
     required int idRol,
   }) async {
     try {
-      final response = await http.post(
+      final response = await cliente.post(
         _url('/api/usuarios/registro'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
@@ -138,12 +157,14 @@ class ApiUsuario {
     try {
       final headers = await _headers();
       if (headers == null) return null;
-      final response = await http.get(
+      final response = await cliente.get(
         _url('/api/usuarios/perfil'),
         headers: headers,
       );
       if (response.statusCode != 200) return null;
-      final usuario = Map<String, dynamic>.from(jsonDecode(response.body));
+      final decoded = jsonDecode(response.body);
+      if (decoded is! Map) return null;
+      final usuario = Map<String, dynamic>.from(decoded);
       await _guardarUsuario(usuario);
       return usuario;
     } catch (_) {
@@ -151,7 +172,6 @@ class ApiUsuario {
     }
   }
 
-  // Solo se permiten estos cuatro campos. Correo y rol nunca se envían.
   Future<Map<String, dynamic>> editarPerfil({
     required String nombre,
     required String apellido,
@@ -161,7 +181,7 @@ class ApiUsuario {
     try {
       final headers = await _headers(json: true);
       if (headers == null) return _sinSesion();
-      final response = await http.put(
+      final response = await cliente.put(
         _url('/api/perfil'),
         headers: headers,
         body: jsonEncode({
@@ -188,7 +208,7 @@ class ApiUsuario {
     try {
       final headers = await _headers(json: true);
       if (headers == null) return _sinSesion();
-      final response = await http.put(
+      final response = await cliente.put(
         _url('/api/perfil/cambiar-contrasena'),
         headers: headers,
         body: jsonEncode({
@@ -202,7 +222,6 @@ class ApiUsuario {
     }
   }
 
-  // Compatible con Flutter Web y móvil: enviar bytes seleccionados con file_picker.
   Future<Map<String, dynamic>> subirFotoPerfil({
     required Uint8List bytes,
     required String nombreArchivo,
@@ -217,9 +236,7 @@ class ApiUsuario {
       request.headers.addAll(headers);
 
       final extension = nombreArchivo.split('.').last.toLowerCase();
-
       String tipoMime;
-
       switch (extension) {
         case 'jpg':
         case 'jpeg':
@@ -232,9 +249,12 @@ class ApiUsuario {
           tipoMime = 'webp';
           break;
         default:
-          throw Exception('Formato de imagen no permitido');
+          return {
+            'success': false,
+            'statusCode': 400,
+            'message': 'Formato de imagen no permitido',
+          };
       }
-
       request.files.add(
         http.MultipartFile.fromBytes(
           'foto',
@@ -243,8 +263,7 @@ class ApiUsuario {
           contentType: MediaType('image', tipoMime),
         ),
       );
-
-      final streamed = await request.send();
+      final streamed = await cliente.send(request);
       final response = await http.Response.fromStream(streamed);
       final resultado = _resultado(response);
       if (resultado['success'] == true) {
@@ -262,7 +281,7 @@ class ApiUsuario {
     try {
       final headers = await _headers();
       if (headers == null) return _sinSesion();
-      final response = await http.delete(
+      final response = await cliente.delete(
         _url('/api/perfil/foto-perfil'),
         headers: headers,
       );
@@ -277,18 +296,28 @@ class ApiUsuario {
   }
 
   Map<String, dynamic> _sinSesion() => {
-    'success': false,
-    'statusCode': 401,
-    'message': 'Debes iniciar sesión nuevamente',
-  };
+        'success': false,
+        'statusCode': 401,
+        'message': 'Debes iniciar sesión nuevamente',
+      };
 
   Future<void> logout() async {
+    if (kIsWeb) {
+      // No se borra el estado local hasta confirmar que el servidor
+      // revocó la sesión (o que ya estaba vencida).
+      final response = await cliente.post(_url('/api/usuarios/logout-web'));
+      if (!((response.statusCode >= 200 && response.statusCode < 300) ||
+          response.statusCode == 401)) {
+        throw StateError('No se pudo revocar la sesión web (${response.statusCode})');
+      }
+    }
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('token');
     await prefs.remove('usuario');
   }
 
   Future<bool> estaLogueado() async {
+    if (kIsWeb) return validarToken();
     final token = await obtenerToken();
     return token != null && token.isNotEmpty;
   }
@@ -297,7 +326,7 @@ class ApiUsuario {
     try {
       final headers = await _headers();
       if (headers == null) return false;
-      final response = await http.get(
+      final response = await cliente.get(
         _url('/api/usuarios/validar-token'),
         headers: headers,
       );
@@ -309,7 +338,7 @@ class ApiUsuario {
 
   Future<Map<String, dynamic>> reenviarVerificacion(String correo) async {
     try {
-      final response = await http.post(
+      final response = await cliente.post(
         _url('/api/usuarios/reenviar-verificacion'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({'correo': correo.trim().toLowerCase()}),
