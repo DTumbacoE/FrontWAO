@@ -117,17 +117,29 @@ class _HomeWebState extends State<HomeWeb> {
             'Permite el acceso a tu ubicación en el navegador para ver negocios cercanos.',
           );
         }
+
         final posicion = await Geolocator.getCurrentPosition(
           locationSettings: const LocationSettings(
-            accuracy: LocationAccuracy.high,
+            accuracy: LocationAccuracy.best,
+            timeLimit: Duration(seconds: 20),
           ),
         );
-        ubicacion = LatLng(posicion.latitude, posicion.longitude);
-        debugPrint('========== UBICACIÓN WAO ==========');
+
         debugPrint('Latitud: ${posicion.latitude}');
         debugPrint('Longitud: ${posicion.longitude}');
         debugPrint('Precisión: ${posicion.accuracy} metros');
-        debugPrint('===================================');
+
+        // No utilizar ubicaciones demasiado imprecisas.
+        if (posicion.accuracy > 10000) {
+          throw Exception(
+            'No fue posible obtener una ubicación suficientemente precisa. '
+            'Activa la ubicación de Windows y verifica los permisos '
+            'de Chrome. También puedes seleccionar tu ubicación '
+            'manualmente cuando esta opción esté disponible.',
+          );
+        }
+
+        ubicacion = LatLng(posicion.latitude, posicion.longitude);
       }
       final data = _role == 2
           ? await _apiNegocio.misNegocios()
