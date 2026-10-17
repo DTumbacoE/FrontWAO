@@ -48,6 +48,7 @@ class _HomeWebState extends State<HomeWeb> {
   LatLng? _posicionUsuario;
   bool _cargandoMapa = false;
   String? _mensajeMapa;
+  GoogleMapController? _mapController;
   @override
   void initState() {
     super.initState();
@@ -58,6 +59,7 @@ class _HomeWebState extends State<HomeWeb> {
 
   @override
   void dispose() {
+    _mapController?.dispose();
     super.dispose();
   }
 
@@ -178,6 +180,11 @@ class _HomeWebState extends State<HomeWeb> {
                   : 'No tienes negocios con coordenadas disponibles.')
             : '${marcadores.length} negocio(s) en el mapa';
       });
+      if (ubicacion != null && _mapController != null) {
+        await _mapController!.animateCamera(
+          CameraUpdate.newLatLngZoom(ubicacion, 14),
+        );
+      }
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -672,7 +679,15 @@ class _HomeWebState extends State<HomeWeb> {
                           : _mapCenter),
                   zoom: 12,
                 ),
-                onMapCreated: (controller) {},
+                onMapCreated: (controller) {
+                  _mapController = controller;
+
+                  if (_posicionUsuario != null) {
+                    controller.animateCamera(
+                      CameraUpdate.newLatLngZoom(_posicionUsuario!, 14),
+                    );
+                  }
+                },
                 mapType: MapType.normal,
                 style: _waoMapStyle,
                 zoomControlsEnabled: true,
