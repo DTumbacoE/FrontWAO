@@ -123,6 +123,11 @@ class _HomeWebState extends State<HomeWeb> {
           ),
         );
         ubicacion = LatLng(posicion.latitude, posicion.longitude);
+        debugPrint('========== UBICACIÓN WAO ==========');
+        debugPrint('Latitud: ${posicion.latitude}');
+        debugPrint('Longitud: ${posicion.longitude}');
+        debugPrint('Precisión: ${posicion.accuracy} metros');
+        debugPrint('===================================');
       }
       final data = _role == 2
           ? await _apiNegocio.misNegocios()
