@@ -19,7 +19,7 @@ const _mapCenter = LatLng(
   -2.2267,
   -80.8587,
 ); // Vista inicial mientras se obtienen datos.
-const double _radioKm = 20.0;
+const double _radioKm = 10.0;
 const String _waoMapStyle = r'''[
   {"featureType":"poi","elementType":"all","stylers":[{"visibility":"off"}]},
   {"featureType":"transit","elementType":"all","stylers":[{"visibility":"off"}]}
@@ -49,6 +49,8 @@ class _HomeWebState extends State<HomeWeb> {
   bool _cargandoMapa = false;
   String? _mensajeMapa;
   GoogleMapController? _mapController;
+  bool _ubicacionManual = false;
+  List<Map<String, dynamic>> _negociosMapa = [];
   @override
   void initState() {
     super.initState();
@@ -93,19 +95,90 @@ class _HomeWebState extends State<HomeWeb> {
     );
   }
 
+  Set<Marker> _crearMarcadores(
+    LatLng? centro,
+    List<Map<String, dynamic>> negocios,
+  ) {
+    final resultado = <Marker>{};
+    for (final negocio in negocios) {
+      final lat = double.tryParse('${negocio['latitud'] ?? ''}');
+      final lng = double.tryParse('${negocio['longitud'] ?? ''}');
+      if (lat == null ||
+          lng == null ||
+          !lat.isFinite ||
+          !lng.isFinite ||
+          lat < -90 ||
+          lat > 90 ||
+          lng < -180 ||
+          lng > 180)
+        continue;
+      if (_role == 3) {
+        if (centro == null) continue;
+        if ('${negocio['estado'] ?? 1}' == '0' ||
+            '${negocio['estado']}'.toLowerCase() == 'false')
+          continue;
+        final metros = Geolocator.distanceBetween(
+          centro.latitude,
+          centro.longitude,
+          lat,
+          lng,
+        );
+        if (metros > _radioKm * 1000) continue;
+      }
+      resultado.add(
+        Marker(
+          markerId: MarkerId('wao_${negocio['id_negocio']}'),
+          position: LatLng(lat, lng),
+          icon: BitmapDescriptor.defaultMarkerWithHue(
+            BitmapDescriptor.hueOrange,
+          ),
+          infoWindow: InfoWindow(
+            title: '${negocio['nombre'] ?? 'Negocio WAO'}',
+            snippet: '${negocio['ubicacion'] ?? ''}',
+          ),
+        ),
+      );
+    }
+    return resultado;
+  }
+
+  Future<void> _moverCamara(LatLng centro) async {
+    try {
+      await _mapController?.animateCamera(
+        CameraUpdate.newLatLngZoom(centro, 13),
+      );
+    } catch (e) {
+      debugPrint('Mapa no disponible para mover la cámara: $e');
+    }
+  }
+
+  void _seleccionarUbicacionManual(LatLng punto) {
+    if (_role != 3 || !mounted) return;
+    final marcadores = _crearMarcadores(punto, _negociosMapa);
+    setState(() {
+      _posicionUsuario = punto;
+      _ubicacionManual = true;
+      _markers = marcadores;
+      _mensajeMapa = marcadores.isEmpty
+          ? 'No hay negocios registrados a 10 km del punto seleccionado.'
+          : '${marcadores.length} negocio(s) a 10 km del punto seleccionado.';
+    });
+    _moverCamara(punto);
+  }
+
   Future<void> _cargarMapa() async {
     if (_cargandoMapa) return;
     setState(() {
       _cargandoMapa = true;
       _mensajeMapa = null;
     });
-    try {
-      LatLng? ubicacion;
-      if (_role == 3) {
+
+    LatLng? ubicacion = _ubicacionManual ? _posicionUsuario : null;
+    String? avisoUbicacion;
+    if (_role == 3 && !_ubicacionManual) {
+      try {
         if (!await Geolocator.isLocationServiceEnabled()) {
-          throw Exception(
-            'Activa los servicios de ubicación para buscar negocios.',
-          );
+          throw Exception('Servicios de ubicación desactivados.');
         }
         var permiso = await Geolocator.checkPermission();
         if (permiso == LocationPermission.denied) {
@@ -113,103 +186,75 @@ class _HomeWebState extends State<HomeWeb> {
         }
         if (permiso == LocationPermission.denied ||
             permiso == LocationPermission.deniedForever) {
-          throw Exception(
-            'Permite el acceso a tu ubicación en el navegador para ver negocios cercanos.',
-          );
+          throw Exception('Permiso de ubicación denegado.');
         }
-
         final posicion = await Geolocator.getCurrentPosition(
           locationSettings: const LocationSettings(
             accuracy: LocationAccuracy.best,
             timeLimit: Duration(seconds: 20),
           ),
         );
-
-        debugPrint('Latitud: ${posicion.latitude}');
-        debugPrint('Longitud: ${posicion.longitude}');
-        debugPrint('Precisión: ${posicion.accuracy} metros');
-
-        // No utilizar ubicaciones demasiado imprecisas.
-        if (posicion.accuracy > 10000) {
+        debugPrint(
+          'WAO ubicación: ${posicion.latitude}, ${posicion.longitude}; '
+          'precisión: ${posicion.accuracy} m',
+        );
+        if (!posicion.accuracy.isFinite || posicion.accuracy > 10000) {
           throw Exception(
-            'No fue posible obtener una ubicación suficientemente precisa. '
-            'Activa la ubicación de Windows y verifica los permisos '
-            'de Chrome. También puedes seleccionar tu ubicación '
-            'manualmente cuando esta opción esté disponible.',
+            'La ubicación del navegador es demasiado imprecisa '
+            '(${posicion.accuracy.toStringAsFixed(0)} metros).',
           );
         }
-
         ubicacion = LatLng(posicion.latitude, posicion.longitude);
+      } catch (e) {
+        avisoUbicacion =
+            'No se pudo obtener una ubicación confiable. '
+            'Toca el mapa para elegir el lugar desde donde buscar negocios.';
+        debugPrint('WAO geolocalización: $e');
       }
+    }
+
+    try {
       final data = _role == 2
           ? await _apiNegocio.misNegocios()
           : await _apiNegocio.obtenerTodos();
-      final Set<Marker> marcadores = {};
+      final negocios = <Map<String, dynamic>>[];
       for (final item in data) {
-        if (item is! Map) continue;
-        final negocio = Map<String, dynamic>.from(item);
-        final lat = double.tryParse('${negocio['latitud'] ?? ''}');
-        final lng = double.tryParse('${negocio['longitud'] ?? ''}');
-        if (lat == null ||
-            lng == null ||
-            !lat.isFinite ||
-            !lng.isFinite ||
-            lat < -90 ||
-            lat > 90 ||
-            lng < -180 ||
-            lng > 180)
-          continue;
-        if (_role == 3) {
-          // Solo negocios activos. El backend debe aplicar además sus reglas de publicación.
-          if ('${negocio['estado'] ?? 1}' == '0' ||
-              '${negocio['estado']}'.toLowerCase() == 'false')
-            continue;
-          final metros = Geolocator.distanceBetween(
-            ubicacion!.latitude,
-            ubicacion.longitude,
-            lat,
-            lng,
-          );
-          if (metros > _radioKm * 1000) continue;
-        }
-        marcadores.add(
-          Marker(
-            markerId: MarkerId('wao_${negocio['id_negocio']}'),
-            position: LatLng(lat, lng),
-            icon: BitmapDescriptor.defaultMarkerWithHue(
-              BitmapDescriptor.hueOrange,
-            ),
-            infoWindow: InfoWindow(
-              title: '${negocio['nombre'] ?? 'Negocio WAO'}',
-              snippet: '${negocio['ubicacion'] ?? ''}',
-            ),
-          ),
-        );
+        if (item is Map) negocios.add(Map<String, dynamic>.from(item));
       }
       if (!mounted) return;
+      // Si el turista seleccionó un punto mientras cargaban los negocios,
+      // respetamos su selección en lugar de reemplazarla por el GPS.
+      if (_ubicacionManual) ubicacion = _posicionUsuario;
+      final marcadores = _crearMarcadores(ubicacion, negocios);
       setState(() {
+        _negociosMapa = negocios;
         _posicionUsuario = ubicacion;
         _markers = marcadores;
         _cargandoMapa = false;
-        _mensajeMapa = marcadores.isEmpty
-            ? (_role == 3
-                  ? 'No hay negocios registrados cerca de tu ubicación.'
-                  : 'No tienes negocios con coordenadas disponibles.')
-            : '${marcadores.length} negocio(s) en el mapa';
+        _mensajeMapa =
+            avisoUbicacion ??
+            (marcadores.isEmpty
+                ? (_role == 3
+                      ? 'No hay negocios registrados a 10 km de la ubicación seleccionada.'
+                      : 'No tienes negocios con coordenadas disponibles.')
+                : '${marcadores.length} negocio(s) en el mapa.');
       });
-      if (ubicacion != null && _mapController != null) {
-        await _mapController!.animateCamera(
-          CameraUpdate.newLatLngZoom(ubicacion, 14),
-        );
-      }
+      if (ubicacion != null) await _moverCamara(ubicacion);
     } catch (e) {
       if (!mounted) return;
       setState(() {
         _cargandoMapa = false;
-        _markers = {};
-        _mensajeMapa = e.toString().replaceFirst('Exception: ', '');
+        _mensajeMapa =
+            'No se pudieron cargar los negocios. Intenta nuevamente.';
       });
+      debugPrint('WAO error al cargar negocios: $e');
     }
+  }
+
+  void _reintentarGps() {
+    if (_cargandoMapa) return;
+    setState(() => _ubicacionManual = false);
+    _cargarMapa();
   }
 
   int get _role => int.tryParse('${_usuarioActual['id_rol'] ?? 3}') ?? 3;
@@ -670,6 +715,21 @@ class _HomeWebState extends State<HomeWeb> {
                 : 'Solo establecimientos registrados en WAO dentro de tu ubicación.',
             style: const TextStyle(color: _muted, fontSize: 13),
           ),
+          if (_role == 3) ...[
+            const SizedBox(height: 8),
+            const Text(
+              'Puedes tocar cualquier punto del mapa para buscar negocios a 10 km de ese lugar.',
+              style: TextStyle(color: _muted, fontSize: 12),
+            ),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                onPressed: _cargandoMapa ? null : _reintentarGps,
+                icon: const Icon(Icons.my_location_outlined),
+                label: const Text('Volver a intentar mi ubicación'),
+              ),
+            ),
+          ],
           if (_cargandoMapa)
             const Padding(
               padding: EdgeInsets.only(top: 10),
@@ -698,18 +758,18 @@ class _HomeWebState extends State<HomeWeb> {
                 ),
                 onMapCreated: (controller) {
                   _mapController = controller;
-
                   if (_posicionUsuario != null) {
-                    controller.animateCamera(
-                      CameraUpdate.newLatLngZoom(_posicionUsuario!, 14),
-                    );
+                    _moverCamara(_posicionUsuario!);
                   }
                 },
+                onTap: _role == 3 ? _seleccionarUbicacionManual : null,
                 mapType: MapType.normal,
                 style: _waoMapStyle,
                 zoomControlsEnabled: true,
-                myLocationEnabled: _role == 3 && _posicionUsuario != null,
-                myLocationButtonEnabled: _role == 3 && _posicionUsuario != null,
+                myLocationEnabled:
+                    _role == 3 && _posicionUsuario != null && !_ubicacionManual,
+                myLocationButtonEnabled:
+                    _role == 3 && _posicionUsuario != null && !_ubicacionManual,
                 markers: {
                   ..._markers,
                   if (_posicionUsuario != null && _role == 3)
@@ -719,16 +779,20 @@ class _HomeWebState extends State<HomeWeb> {
                       icon: BitmapDescriptor.defaultMarkerWithHue(
                         BitmapDescriptor.hueAzure,
                       ),
-                      infoWindow: const InfoWindow(
-                        title: 'Mi ubicación',
-                        snippet: 'Estás aquí',
+                      infoWindow: InfoWindow(
+                        title: _ubicacionManual
+                            ? 'Punto de búsqueda'
+                            : 'Mi ubicación',
+                        snippet: _ubicacionManual
+                            ? 'Ubicación elegida en el mapa'
+                            : 'Ubicación del dispositivo',
                       ),
                     ),
                 },
                 circles: _role == 3 && _posicionUsuario != null
                     ? {
                         Circle(
-                          circleId: const CircleId('radio_20km'),
+                          circleId: const CircleId('radio_10km'),
                           center: _posicionUsuario!,
                           radius: _radioKm * 1000,
                           strokeColor: _orange,
