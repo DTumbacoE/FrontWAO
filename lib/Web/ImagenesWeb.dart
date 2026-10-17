@@ -498,27 +498,12 @@ class _GaleriaNegocioWebState
     setState(() => _subiendo = true);
 
     try {
-      final url = await CloudinaryService().subirImagen(
+      final resultado = await CloudinaryService().subirImagen(
         seleccion,
+        widget.idNegocio,
       );
-
-      if (url == null || url.isEmpty) {
-        throw Exception(
-          'No se obtuvo la URL de la imagen.',
-        );
-      }
-
-      final resultado = await _imagenesApi.crearImagen(
-        idNegocio: widget.idNegocio,
-        url: url,
-      );
-
-      if (resultado == null ||
-          resultado['success'] == false) {
-        throw Exception(
-          resultado?['message'] ??
-              'No se pudo registrar la imagen.',
-        );
+      if (resultado['success'] != true) {
+        throw Exception('No se pudo registrar la imagen.');
       }
 
       await _cargar();
